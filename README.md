@@ -7,6 +7,8 @@ genera un reporte Markdown fechado. No modifica los logs.
 Repositorio público: https://github.com/alejandrogarcialamazon/revlogs.
 Licencia MIT. Estado: versión inicial; ver [CHANGELOG.md](CHANGELOG.md) y
 [mejora 1: publicación](docs/MEJORA-01-PUBLICACION.md).
+El [diagnóstico de acceso GitHub](docs/MEJORA-02-GITHUB-COMPARTIDO.md) permite
+comprobar la configuración compartida de Codex y OpenCode sin leer credenciales.
 
 ## Uso
 
