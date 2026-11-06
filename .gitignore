@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+reports/
+.mypy_cache/
+.ruff_cache/
+.agents/
+.codex/
+.aws/
+.env
+.env.*
+*.pem
+*.key

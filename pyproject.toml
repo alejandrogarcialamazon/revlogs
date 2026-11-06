@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "revlogs"
+version = "1.0.0"
+description = "Analizador de errores y advertencias en logs con reportes Markdown"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Alejandro García"}]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/alejandrogarcialamazon/revlogs"
+Issues = "https://github.com/alejandrogarcialamazon/revlogs/issues"
+
+[project.scripts]
+revlogs = "revlogs.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["revlogs*"]
+
+[tool.ruff]
+line-length = 88
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
