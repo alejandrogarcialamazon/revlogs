@@ -27,10 +27,24 @@ restantes. El reporte también incluye esas incidencias. No requiere ejecutar
 como root: usa una cuenta que tenga permisos sobre los logs elegidos.
 
 Por defecto, los directorios se recorren solo en su primer nivel. `--recursive`
-incluye subdirectorios. Se procesan todos sus archivos regulares, con independencia
-de su extensión; conviene elegir directorios con logs de texto. No se siguen
+incluye subdirectorios. Se procesan sus archivos regulares de cualquier extensión,
+exceptuando los reportes reconocidos de revlogs. No se siguen
 enlaces simbólicos ni se leen dispositivos, sockets o FIFO. Las rutas repetidas y
 los enlaces duros al mismo archivo se analizan una sola vez.
+
+Los reportes se reconocen por una marca de contenido, incluso con nombres
+personalizados; también se reconoce la cabecera de reportes anteriores. Los
+archivos Markdown normales se conservan. `--include-reports` permite incluir
+reportes de forma deliberada. `--include GLOB` y `--exclude GLOB` son repetibles:
+se comparan con el nombre o ruta relativa POSIX a cada directorio de entrada,
+sin distinguir separadores dentro de `*` y distinguiendo mayúsculas. Las exclusiones
+prevalecen y permiten podar directorios. Usar comillas evita expansión del shell:
+
+```bash
+python3 -m revlogs ./logs -r --include '*.log' --include '*.log.1' --exclude 'archive'
+```
+
+Detalles y pruebas: [mejora 3](docs/MEJORA-03-FILTROS.md).
 
 El reporte se guarda en `reports/revlogs_AAAAMMDD_HHMMSS_microsegundos.md`, salvo
 que se indique `--output`. El destino debe terminar en `.md` y no existir. Se crean

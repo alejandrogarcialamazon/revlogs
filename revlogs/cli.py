@@ -44,6 +44,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Archivos/directorios; por defecto se usan rutas típicas de Linux",
     )
     parser.add_argument("-r", "--recursive", action="store_true")
+    parser.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Incluir archivos por nombre o ruta relativa; repetible",
+    )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="Excluir archivos o directorios; prevalece sobre --include",
+    )
+    parser.add_argument(
+        "--include-reports",
+        action="store_true",
+        help="Permitir explícitamente el análisis de reportes de revlogs",
+    )
     parser.add_argument("-o", "--output", type=Path, help="Reporte .md de destino")
     parser.add_argument(
         "--max-details",
@@ -83,6 +102,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if any(not pattern.strip() for pattern in (*args.include, *args.exclude)):
+        parser.error("Los patrones de inclusión/exclusión no pueden estar vacíos")
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(levelname)s: %(message)s",
@@ -110,6 +131,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.paths or DEFAULT_PATHS,
             recursive=args.recursive,
             excluded=(output,),
+            include_patterns=args.include,
+            exclude_patterns=args.exclude,
+            skip_reports=not args.include_reports,
         )
         print(console_summary(result))
         write_report(output, result, MarkdownRenderer())

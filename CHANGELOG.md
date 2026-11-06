@@ -1,5 +1,11 @@
 # Cambios
 
+## Mejora 3 — 2026-11-06
+
+- Exclusión automática de reportes por marca/cabecera, incluidos nombres propios.
+- Inclusiones/exclusiones glob repetibles y poda de directorios excluidos.
+- Regresiones de conteos estables y conservación de logs en formato Markdown.
+
 ## Mejora 2 — preparada el 2026-11-05
 
 - Diagnóstico sanitizado de autenticación GitHub, identidad, helper HTTPS,

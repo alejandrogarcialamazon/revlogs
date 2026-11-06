@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Protocol
 
-from .models import ScanResult, Severity
+from .models import REPORT_MARKER, ScanResult, Severity
 
 
 class ReportRenderer(Protocol):
@@ -53,6 +53,7 @@ def console_summary(result: ScanResult) -> str:
 
 class MarkdownRenderer:
     def render(self, result: ScanResult) -> Iterator[str]:
+        yield f"{REPORT_MARKER}\n"
         yield "# Reporte de análisis de logs\n\n"
         yield f"Inicio: {result.started_at.isoformat(timespec='seconds')}\n\n"
         if result.finished_at is not None:

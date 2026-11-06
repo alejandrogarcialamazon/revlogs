@@ -5,6 +5,8 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
+REPORT_MARKER = "<!-- revlogs:report v1 -->"
+
 
 class Severity(str, Enum):
     ERROR = "ERROR"

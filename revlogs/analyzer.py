@@ -91,6 +91,9 @@ class LogAnalyzer:
         *,
         recursive: bool = False,
         excluded: Sequence[Path] = (),
+        include_patterns: Sequence[str] = (),
+        exclude_patterns: Sequence[str] = (),
+        skip_reports: bool = True,
     ) -> ScanResult:
         result = ScanResult(started_at=datetime.now().astimezone())
 
@@ -99,7 +102,13 @@ class LogAnalyzer:
             LOGGER.warning("%s: %s", issue.path, issue.message)
 
         for path in discover_files(
-            paths, recursive=recursive, on_issue=on_issue, excluded=excluded
+            paths,
+            recursive=recursive,
+            on_issue=on_issue,
+            excluded=excluded,
+            include_patterns=include_patterns,
+            exclude_patterns=exclude_patterns,
+            skip_reports=skip_reports,
         ):
             LOGGER.info("Analizando %s", path)
             result.files.append(self.analyze_file(path, result))

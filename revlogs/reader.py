@@ -3,9 +3,10 @@
 import os
 import stat
 from collections.abc import Callable, Iterator, Sequence
+from fnmatch import fnmatchcase
 from pathlib import Path
 
-from .models import Issue
+from .models import REPORT_MARKER, Issue
 
 DEFAULT_PATHS: tuple[Path, ...] = tuple(
     Path(path)
@@ -26,6 +27,9 @@ def discover_files(
     recursive: bool,
     on_issue: Callable[[Issue], None],
     excluded: Sequence[Path] = (),
+    include_patterns: Sequence[str] = (),
+    exclude_patterns: Sequence[str] = (),
+    skip_reports: bool = True,
 ) -> Iterator[Path]:
     """Valida rutas y omite duplicados, archivos especiales y enlaces simbólicos.
 
@@ -38,19 +42,43 @@ def discover_files(
     def report(path: Path, exc: OSError) -> None:
         on_issue(Issue(path, str(exc)))
 
-    def walk(path: Path, descend: bool) -> Iterator[Path]:
+    def matches(path: Path, base: Path, patterns: Sequence[str]) -> bool:
+        relative = path.relative_to(base).as_posix()
+        return any(
+            fnmatchcase(path.name, pattern) or fnmatchcase(relative, pattern)
+            for pattern in patterns
+        )
+
+    def walk(path: Path, descend: bool, base: Path) -> Iterator[Path]:
         try:
+            resolved = path.resolve()
+            if any(
+                item == resolved or item in resolved.parents for item in excluded_paths
+            ):
+                return
+            if matches(path, base, exclude_patterns):
+                return
             info = path.lstat()
             if stat.S_ISLNK(info.st_mode):
                 on_issue(Issue(path, "Enlace simbólico omitido"))
                 return
             if stat.S_ISREG(info.st_mode):
-                if path.resolve() in excluded_paths:
+                if include_patterns and not matches(path, base, include_patterns):
                     return
                 identity = (info.st_dev, info.st_ino)
                 if identity not in seen:
                     if not os.access(path, os.R_OK):
                         raise PermissionError(f"Sin permiso de lectura: {path}")
+                    if skip_reports:
+                        with path.open("rb") as stream:
+                            prefix = stream.read(256)
+                        if prefix.startswith(
+                            (
+                                REPORT_MARKER.encode(),
+                                "# Reporte de análisis de logs\n\nInicio: ".encode(),
+                            )
+                        ):
+                            return
                     seen.add(identity)
                     yield path.absolute()
             elif stat.S_ISDIR(info.st_mode):
@@ -62,9 +90,9 @@ def discover_files(
                         try:
                             if entry.is_dir(follow_symlinks=False):
                                 if recursive:
-                                    yield from walk(child, True)
+                                    yield from walk(child, True, base)
                             else:
-                                yield from walk(child, False)
+                                yield from walk(child, False, base)
                         except OSError as exc:
                             report(child, exc)
             else:
@@ -73,7 +101,13 @@ def discover_files(
             report(path, exc)
 
     for path in paths:
-        yield from walk(path.expanduser(), True)
+        expanded = path.expanduser().absolute()
+        try:
+            base = expanded if expanded.is_dir() else expanded.parent
+        except OSError as exc:
+            report(expanded, exc)
+            continue
+        yield from walk(expanded, True, base)
 
 
 def read_lines(path: Path) -> Iterator[tuple[int, str, bool]]:
