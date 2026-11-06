@@ -131,6 +131,9 @@ El fallback a latin-1 es un aviso y no produce por sí solo un código 2.
 
 ## Arquitectura y pruebas
 
+El workflow de [CI](.github/workflows/ci.yml) valida Python 3.10–3.14, estilo,
+tipado y distribución instalada. Véase [mejora 4](docs/MEJORA-04-CI.md).
+
 - `reader.py`: rutas por defecto, descubrimiento, permisos y lectura incremental.
 - `analyzer.py`: expresiones regulares, conteos y evidencias limitadas.
 - `models.py`: modelos tipados compartidos.

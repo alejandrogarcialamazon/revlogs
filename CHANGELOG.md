@@ -1,5 +1,11 @@
 # Cambios
 
+## Mejora 4 — 2026-11-06
+
+- GitHub Actions para pruebas Python 3.10–3.14, Ruff, mypy y empaquetado.
+- Smoke test del wheel instalado en un entorno temporal fuera del fuente.
+- Dependencias de desarrollo fijadas y permisos de CI limitados a lectura.
+
 ## Mejora 3 — 2026-11-06
 
 - Exclusión automática de reportes por marca/cabecera, incluidos nombres propios.
