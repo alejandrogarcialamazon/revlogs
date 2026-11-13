@@ -1,5 +1,10 @@
 # Cambios
 
+## Mejoras 11 y 12 — 2026-11-13
+
+- Configuración TOML validada con precedencia CLI, rutas relativas y compatibilidad Python3.10.
+- Reportes JSON/CSV de esquema v1 y exportaciones simultáneas con exclusión de reportes propios.
+
 ## Mejoras 9 y 10 — 2026-11-13
 
 - Parsers de severidad JSONL y syslog con PRI, modo auto y errores de parseo explícitos.

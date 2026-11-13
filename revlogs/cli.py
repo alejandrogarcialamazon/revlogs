@@ -14,11 +14,12 @@ from .analyzer import (
     LogAnalyzer,
 )
 from .configuration import load_config
+from .exports import RENDERERS
 from .input_formats import ReadOptions
 from .limits import ScanLimits
 from .models import Severity
 from .reader import DEFAULT_PATHS
-from .reports import MarkdownRenderer, console_summary, write_report
+from .reports import console_summary, write_report
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Analiza logs de texto y genera un reporte Markdown."
     )
     parser.add_argument("--config", type=Path, help="Archivo TOML explícito")
+    parser.add_argument(
+        "--report-format", choices=("markdown", "json", "csv"), default="markdown"
+    )
+    parser.add_argument("--json-output", type=Path)
+    parser.add_argument("--csv-output", type=Path)
     parser.add_argument(
         "paths",
         nargs="*",
@@ -192,15 +198,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(levelname)s: %(message)s",
     )
+    suffixes = {"markdown": ".md", "json": ".json", "csv": ".csv"}
     output = args.output or Path("reports") / (
-        f"revlogs_{datetime.now().astimezone():%Y%m%d_%H%M%S_%f}.md"
+        f"revlogs_{datetime.now().astimezone():%Y%m%d_%H%M%S_%f}{suffixes[args.report_format]}"
     )
-    output = output.expanduser().absolute()
-    if output.suffix.lower() != ".md":
-        parser.error("El archivo de salida debe tener extensión .md")
-    # No se permite reemplazar un archivo existente: podría ser un log de entrada.
-    if output.exists() or output.is_symlink():
-        parser.error(f"El destino ya existe: {output}")
+    requested = [(output, args.report_format)]
+    if args.json_output is not None:
+        requested.append((args.json_output, "json"))
+    if args.csv_output is not None:
+        requested.append((args.csv_output, "csv"))
+    outputs = [(path.expanduser().absolute(), kind) for path, kind in requested]
+    try:
+        if len({path.resolve() for path, _ in outputs}) != len(outputs):
+            parser.error("Los destinos de reportes deben ser diferentes")
+        for path, kind in outputs:
+            if path.suffix.lower() != suffixes[kind]:
+                parser.error(f"Extensión de salida incompatible con {kind}")
+            if path.exists() or path.is_symlink():
+                parser.error(f"El destino ya existe: {path}")
+    except (OSError, RuntimeError) as exc:
+        parser.error(f"Destino de reporte inválido: {exc}")
     try:
         analyzer = LogAnalyzer(
             error_patterns=(*DEFAULT_ERROR_PATTERNS, *args.error_pattern),
@@ -230,7 +247,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = analyzer.scan(
             args.paths or DEFAULT_PATHS,
             recursive=args.recursive,
-            excluded=(output,),
+            excluded=tuple(path for path, _ in outputs),
             include_patterns=args.include,
             exclude_patterns=args.exclude,
             skip_reports=not args.include_reports,
@@ -238,8 +255,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             strict=args.strict,
         )
         print(console_summary(result))
-        write_report(output, result, MarkdownRenderer())
-        print(f"\nReporte: {output}")
+        for path, kind in outputs:
+            write_report(path, result, RENDERERS[kind]())
+            print(f"\nReporte {kind}: {path}")
     except OSError as exc:
         LOGGER.error("No se pudo completar la operación: %s", exc)
         return 2

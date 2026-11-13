@@ -137,7 +137,7 @@ def write_report(path: Path, result: ScanResult, renderer: ReportRenderer) -> No
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, delete=False
+            mode="w", encoding="utf-8", newline="", dir=path.parent, delete=False
         ) as stream:
             temporary = Path(stream.name)
             for chunk in renderer.render(result):

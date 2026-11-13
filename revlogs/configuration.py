@@ -28,6 +28,9 @@ INTEGERS = {
     "regex_memory_mib",
 }
 STRINGS = {
+    "report_format",
+    "json_output",
+    "csv_output",
     "output",
     "format",
     "numeric_levels",
@@ -37,6 +40,7 @@ STRINGS = {
     "fail_on",
 }
 CHOICES = {
+    "report_format": {"markdown", "json", "csv"},
     "format": {"text", "auto", "json", "syslog"},
     "numeric_levels": {"python", "syslog"},
     "compression": {"auto", "none", "gzip"},
@@ -91,8 +95,7 @@ def load_config(path: Path) -> dict[str, object]:
         result["paths"] = [
             (path.parent / Path(value).expanduser()).absolute() for value in values
         ]
-    if "output" in result:
-        result["output"] = (
-            path.parent / Path(settings["output"]).expanduser()
-        ).absolute()
+    for name in ("output", "json_output", "csv_output"):
+        if name in result:
+            result[name] = (path.parent / Path(settings[name]).expanduser()).absolute()
     return result

@@ -6,6 +6,8 @@ from enum import Enum
 from pathlib import Path
 
 REPORT_MARKER = "<!-- revlogs:report v1 -->"
+JSON_REPORT_PREFIX = '{"report_kind":"revlogs","schema_version":1,"metadata":'
+CSV_REPORT_PREFIX = "revlogs_report,schema_version,record_type,"
 
 
 class Severity(str, Enum):

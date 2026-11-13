@@ -16,7 +16,13 @@ from .input_formats import (
     select_encoding,
 )
 from .limits import ResourceLimitError, ScanBudget, ScanLimits
-from .models import REPORT_MARKER, DiscoveryStats, Issue
+from .models import (
+    CSV_REPORT_PREFIX,
+    JSON_REPORT_PREFIX,
+    REPORT_MARKER,
+    DiscoveryStats,
+    Issue,
+)
 from .safe_io import LogSource, UnsafeLogError, open_log
 
 DEFAULT_PATHS: tuple[Path, ...] = tuple(
@@ -111,6 +117,8 @@ def discover_sources(
                                 if prefix.startswith(
                                     (
                                         REPORT_MARKER.encode(),
+                                        JSON_REPORT_PREFIX.encode(),
+                                        CSV_REPORT_PREFIX.encode(),
                                         "# Reporte de análisis de logs\n\nInicio: ".encode(),
                                     )
                                 ):

@@ -1,7 +1,9 @@
 """Prueba el wheel instalado en un venv nuevo, fuera del árbol fuente."""
 
 import argparse
+import csv
 import gzip
+import json
 import subprocess
 import tempfile
 import venv
@@ -105,6 +107,29 @@ def verify(directory: Path) -> None:
             or "Advertencias: 1" not in structured.stdout
         ):
             raise RuntimeError("El wheel instalado no integra gzip, UTF-16 y JSON")
+        configuration = root / "settings.toml"
+        configuration.write_text(
+            '[revlogs]\npaths=["logs/app.log"]\nreport_format="json"\noutput="export.json"\ncsv_output="export.csv"',
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [str(cli), "--config", str(configuration)],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            timeout=15,
+        )
+        exported = json.loads((root / "export.json").read_text(encoding="utf-8"))
+        if exported["metadata"]["summary"]["errors"] != 2:
+            raise RuntimeError("JSON instalado inconsistente")
+        with (root / "export.csv").open(encoding="utf-8", newline="") as stream:
+            metrics = {
+                row["metric"]: row["value"]
+                for row in csv.DictReader(stream)
+                if row["record_type"] == "summary"
+            }
+        if int(metrics["errors"]) != 2:
+            raise RuntimeError("CSV instalado inconsistente")
         subprocess.run(
             [str(python), "-m", "pip", "check"], cwd=root, check=True, timeout=30
         )

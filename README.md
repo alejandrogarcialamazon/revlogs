@@ -12,6 +12,11 @@ comprobar la configuración compartida de Codex y OpenCode sin leer credenciales
 
 ## Uso
 
+`--report-format json|csv` selecciona una salida de máquina. Para conservar
+Markdown y agregar exportaciones, usar `--json-output reporte.json` y
+`--csv-output reporte.csv`. Todos comparten el mismo análisis. Ver
+[mejora 12](docs/MEJORA-12-EXPORTACIONES.md).
+
 `--config archivo.toml` permite reutilizar rutas, reglas y límites. La CLI
 prevalece sobre TOML, y TOML sobre los valores predeterminados. Ver
 [mejora 11](docs/MEJORA-11-CONFIGURACION.md) y [ejemplo](examples/revlogs.toml).
