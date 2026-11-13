@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 from collections.abc import Sequence
+from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from .analyzer import (
 )
 from .configuration import load_config
 from .exports import RENDERERS
+from .incremental import Checkpoints
 from .input_formats import ReadOptions
 from .limits import ScanLimits
 from .models import Severity
@@ -42,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Analiza logs de texto y genera un reporte Markdown."
     )
+    parser.add_argument(
+        "--redact", action=argparse.BooleanOptionalAction, default=False
+    )
+    parser.add_argument("--redact-literal", action="append", default=[])
+    parser.add_argument("--state", type=Path, help="Checkpoint incremental privado")
     parser.add_argument("--config", type=Path, help="Archivo TOML explícito")
     parser.add_argument(
         "--report-format", choices=("markdown", "json", "csv"), default="markdown"
@@ -222,6 +229,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         analyzer = LogAnalyzer(
             error_patterns=(*DEFAULT_ERROR_PATTERNS, *args.error_pattern),
             warning_patterns=(*DEFAULT_WARNING_PATTERNS, *args.warning_pattern),
+            redact=args.redact,
+            redact_literals=args.redact_literal,
             max_details=args.max_details,
             max_excerpt_chars=args.max_excerpt_chars,
             error_literals=args.error_literal,
@@ -244,21 +253,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (re.error, ValueError) as exc:
         parser.error(f"Patrones o límites inválidos: {exc}")
     try:
-        result = analyzer.scan(
-            args.paths or DEFAULT_PATHS,
-            recursive=args.recursive,
-            excluded=tuple(path for path, _ in outputs),
-            include_patterns=args.include,
-            exclude_patterns=args.exclude,
-            skip_reports=not args.include_reports,
-            optional_paths=not args.paths,
-            strict=args.strict,
-        )
-        print(console_summary(result))
-        for path, kind in outputs:
-            write_report(path, result, RENDERERS[kind]())
-            print(f"\nReporte {kind}: {path}")
-    except OSError as exc:
+        with ExitStack() as stack:
+            state = stack.enter_context(Checkpoints(args.state)) if args.state else None
+            if state is not None and any(
+                state.path.resolve() == p.resolve() for p, _ in outputs
+            ):
+                raise ValueError("El estado no puede ser un reporte")
+            analyzer.checkpoints = state
+            result = analyzer.scan(
+                args.paths or DEFAULT_PATHS,
+                recursive=args.recursive,
+                excluded=tuple(path for path, _ in outputs)
+                + ((state.path, state.lock_path) if state is not None else ()),
+                include_patterns=args.include,
+                exclude_patterns=args.exclude,
+                skip_reports=not args.include_reports,
+                optional_paths=not args.paths,
+                strict=args.strict,
+            )
+            print(console_summary(result))
+            for path, kind in outputs:
+                write_report(path, result, RENDERERS[kind]())
+                print(f"\nReporte {kind}: {path}")
+            if state is not None and not result.operational_failed:
+                state.save()
+    except (OSError, ValueError) as exc:
         LOGGER.error("No se pudo completar la operación: %s", exc)
         return 2
     except KeyboardInterrupt:

@@ -10,8 +10,9 @@ else:
 
 from .limits import ScanLimits
 
-BOOLEANS = {"recursive", "strict", "include_reports", "verbose"}
+BOOLEANS = {"redact", "recursive", "strict", "include_reports", "verbose"}
 LISTS = {
+    "redact_literal",
     "include",
     "exclude",
     "error_pattern",
@@ -28,6 +29,7 @@ INTEGERS = {
     "regex_memory_mib",
 }
 STRINGS = {
+    "state",
     "report_format",
     "json_output",
     "csv_output",
@@ -95,7 +97,7 @@ def load_config(path: Path) -> dict[str, object]:
         result["paths"] = [
             (path.parent / Path(value).expanduser()).absolute() for value in values
         ]
-    for name in ("output", "json_output", "csv_output"):
+    for name in ("output", "json_output", "csv_output", "state"):
         if name in result:
             result[name] = (path.parent / Path(settings[name]).expanduser()).absolute()
     return result

@@ -1,11 +1,14 @@
 """Reglas de búsqueda configurables y acumulación acotada de evidencias."""
 
+import hashlib
+import json
 import logging
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
+from .incremental import Checkpoints
 from .input_formats import InputFormatError, ReadOptions
 from .limits import ResourceLimitError, ScanBudget, ScanLimits
 from .matching import (
@@ -22,6 +25,7 @@ from .matching import (
 from .models import DiscoveryStats, Evidence, FileResult, Issue, ScanResult
 from .parsers import LogParser, ParseError
 from .reader import discover_sources, read_lines
+from .redaction import Redactor
 from .safe_io import LogSource
 
 LOGGER = logging.getLogger(__name__)
@@ -50,9 +54,31 @@ class LogAnalyzer:
         level_fields: Sequence[str] = ("level", "severity", "log.level"),
         numeric_levels: str = "python",
         read_options: ReadOptions | None = None,
+        redact: bool = False,
+        redact_literals: Sequence[str] = (),
+        checkpoints: Checkpoints | None = None,
     ) -> None:
         if max_details < 0 or max_excerpt_chars < 1:
             raise ValueError("Límites de evidencias inválidos")
+        self.checkpoint_signature = hashlib.sha256(
+            json.dumps(
+                [
+                    list(error_patterns),
+                    list(warning_patterns),
+                    list(error_literals),
+                    list(warning_literals),
+                    format,
+                    list(level_fields),
+                    numeric_levels,
+                    repr(read_options or ReadOptions()),
+                    redact,
+                    list(redact_literals),
+                ],
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        self.redactor = Redactor(redact, redact_literals)
+        self.checkpoints = checkpoints
         self.parser = LogParser(format, level_fields, numeric_levels)
         self.read_options = read_options or ReadOptions()
         self.matcher = PatternMatcher(
@@ -103,10 +129,22 @@ class LogAnalyzer:
             )
 
         budget = budget if budget is not None else ScanBudget(self.limits)
+        offset, start_line = 0, 0
+        if self.checkpoints is not None and source is not None:
+            if self.read_options.encoding not in {"auto", "utf-8", "latin-1", "ascii"}:
+                raise ValueError("Incremental admite UTF-8, latin-1 y ASCII")
+            prefix = source.stream.read(4)
+            source.stream.seek(0)
+            if prefix.startswith((b"\xff\xfe", b"\xfe\xff", b"\x00\x00\xfe\xff")):
+                raise ValueError("Incremental no admite UTF-16/32")
+            offset, start_line = self.checkpoints.start(source)
         try:
             for number, line, fallback in read_lines(
                 source if source is not None else path,
                 budget=budget,
+                offset=offset,
+                start_line=start_line,
+                complete_lines_only=self.checkpoints is not None,
                 options=self.read_options,
                 on_decode_issue=on_decode_issue,
                 on_encoding=on_encoding,
@@ -134,12 +172,19 @@ class LogAnalyzer:
                         if budget.details >= self.limits.max_total_details:
                             result.details_limited = True
                             continue
-                        excerpt = line[: self.max_excerpt_chars]
-                        if len(line) > self.max_excerpt_chars:
+                        safe_line = self.redactor.apply(line)
+                        excerpt = safe_line[: self.max_excerpt_chars]
+                        if len(safe_line) > self.max_excerpt_chars:
                             excerpt += " … [truncado]"
                         category.evidence.append(Evidence(number, excerpt, count))
                         budget.details += 1
             file_result.complete = file_result.parse_errors == 0
+            if (
+                file_result.complete
+                and self.checkpoints is not None
+                and source is not None
+            ):
+                self.checkpoints.record(source, start_line + file_result.lines_read)
         except OSError as exc:
             limited = isinstance(exc, ResourceLimitError)
             if isinstance(exc, ResourceLimitError) and exc.stop_scan:
@@ -177,6 +222,8 @@ class LogAnalyzer:
         optional_paths: bool = False,
         strict: bool = False,
     ) -> ScanResult:
+        if self.checkpoints is not None:
+            self.checkpoints.bind(self.checkpoint_signature)
         result = ScanResult(started_at=datetime.now().astimezone(), strict=strict)
         stats = DiscoveryStats()
         budget = ScanBudget(self.limits)

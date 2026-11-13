@@ -201,6 +201,9 @@ def discover_files(
 def read_lines(
     path: Path | LogSource,
     *,
+    offset: int = 0,
+    start_line: int = 0,
+    complete_lines_only: bool = False,
     budget: ScanBudget | None = None,
     options: ReadOptions | None = None,
     on_decode_issue: Callable[[int], None] | None = None,
@@ -227,14 +230,14 @@ def read_lines(
         return
     try:
         prefix = path.stream.read(4)
-        path.stream.seek(0)
+        path.stream.seek(offset)
         encoding, width, newline = select_encoding(prefix, options.encoding)
     except (gzip.BadGzipFile, EOFError, zlib.error) as exc:
         raise InputFormatError("Gzip corrupto o truncado", "compression_error") from exc
     if on_encoding is not None:
         on_encoding(encoding)
     file_bytes = 0
-    number = 0
+    number = start_line
     while True:
         limits = budget.limits
         size = (
@@ -252,6 +255,9 @@ def read_lines(
                 "Gzip corrupto o truncado", "compression_error"
             ) from exc
         if not raw:
+            return
+        if complete_lines_only and not raw.endswith(newline):
+            path.stream.seek(-len(raw), 1)
             return
         number += 1
         file_bytes += len(raw)
