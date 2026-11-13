@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator, Sequence
 from fnmatch import fnmatchcase
 from pathlib import Path
 
-from .models import REPORT_MARKER, Issue
+from .models import REPORT_MARKER, DiscoveryStats, Issue
 
 DEFAULT_PATHS: tuple[Path, ...] = tuple(
     Path(path)
@@ -30,6 +30,7 @@ def discover_files(
     include_patterns: Sequence[str] = (),
     exclude_patterns: Sequence[str] = (),
     skip_reports: bool = True,
+    stats: DiscoveryStats | None = None,
 ) -> Iterator[Path]:
     """Valida rutas y omite duplicados, archivos especiales y enlaces simbólicos.
 
@@ -37,10 +38,12 @@ def discover_files(
     errores se notifican sin interrumpir las otras rutas.
     """
     seen: set[tuple[int, int]] = set()
+    stats = stats if stats is not None else DiscoveryStats()
     excluded_paths = {path.resolve() for path in excluded}
 
     def report(path: Path, exc: OSError) -> None:
-        on_issue(Issue(path, str(exc)))
+        code = "missing_path" if isinstance(exc, FileNotFoundError) else "io_error"
+        on_issue(Issue(path, str(exc), code=code))
 
     def matches(path: Path, base: Path, patterns: Sequence[str]) -> bool:
         relative = path.relative_to(base).as_posix()
@@ -55,8 +58,10 @@ def discover_files(
             if any(
                 item == resolved or item in resolved.parents for item in excluded_paths
             ):
+                stats.skipped += 1
                 return
             if matches(path, base, exclude_patterns):
+                stats.skipped += 1
                 return
             info = path.lstat()
             if stat.S_ISLNK(info.st_mode):
@@ -64,6 +69,7 @@ def discover_files(
                 return
             if stat.S_ISREG(info.st_mode):
                 if include_patterns and not matches(path, base, include_patterns):
+                    stats.skipped += 1
                     return
                 identity = (info.st_dev, info.st_ino)
                 if identity not in seen:
@@ -78,10 +84,12 @@ def discover_files(
                                 "# Reporte de análisis de logs\n\nInicio: ".encode(),
                             )
                         ):
+                            stats.skipped += 1
                             return
                     seen.add(identity)
                     yield path.absolute()
             elif stat.S_ISDIR(info.st_mode):
+                stats.directories += 1
                 if not descend:
                     return
                 with os.scandir(path) as entries:

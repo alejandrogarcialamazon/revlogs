@@ -113,6 +113,12 @@ a stderr. `--verbose` agrega el progreso por archivo.
 
 ## Automatización
 
+Las rutas predeterminadas inexistentes son avisos si se procesa algún archivo.
+Las entradas explícitas fallidas y los errores de lectura/permisos son bloqueantes.
+`--strict` hace bloqueantes también los avisos. Sin archivos procesados se devuelve 2;
+el reporte distingue directorio vacío, selección filtrada y falta de entradas.
+Detalles: [mejora 5](docs/MEJORA-05-ESTADOS-OPERATIVOS.md).
+
 ```bash
 python3 -m revlogs ./logs --fail-on error
 python3 -m revlogs ./logs --fail-on warning
@@ -125,8 +131,8 @@ python3 -m revlogs ./logs --fail-on warning
 | 2 | Argumentos inválidos, incidencias operativas, ninguna entrada analizable o fallo al escribir el reporte |
 | 130 | Interrupción por teclado durante el análisis o la escritura |
 
-El código 2 tiene prioridad sobre los umbrales. Las rutas por defecto que no
-existan cuentan como incidencias operativas, aunque otros archivos se procesen.
+El código 2 tiene prioridad sobre los umbrales. Las rutas predeterminadas
+inexistentes son avisos; `--strict` exige su disponibilidad.
 El fallback a latin-1 es un aviso y no produce por sí solo un código 2.
 
 ## Arquitectura y pruebas

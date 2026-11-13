@@ -45,6 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-r", "--recursive", action="store_true")
     parser.add_argument(
+        "--strict", action="store_true", help="Tratar avisos operativos como errores"
+    )
+    parser.add_argument(
         "--include",
         action="append",
         default=[],
@@ -134,6 +137,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_patterns=args.include,
             exclude_patterns=args.exclude,
             skip_reports=not args.include_reports,
+            optional_paths=not args.paths,
+            strict=args.strict,
         )
         print(console_summary(result))
         write_report(output, result, MarkdownRenderer())
@@ -144,7 +149,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except KeyboardInterrupt:
         LOGGER.warning("Análisis interrumpido")
         return 130
-    if result.issues or not result.files:
+    if result.operational_failed:
         return 2
     if args.fail_on and result.total(Severity.ERROR):
         return 1

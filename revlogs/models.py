@@ -42,6 +42,14 @@ class FileResult:
 class Issue:
     path: Path
     message: str
+    blocking: bool = True
+    code: str = "io_error"
+
+
+@dataclass
+class DiscoveryStats:
+    directories: int = 0
+    skipped: int = 0
 
 
 @dataclass
@@ -50,6 +58,11 @@ class ScanResult:
     finished_at: datetime | None = None
     files: list[FileResult] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
+    strict: bool = False
+
+    @property
+    def operational_failed(self) -> bool:
+        return not self.files or any(i.blocking or self.strict for i in self.issues)
 
     def total(self, severity: Severity) -> int:
         return sum(item.categories[severity].occurrences for item in self.files)

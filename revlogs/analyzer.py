@@ -3,11 +3,12 @@
 import logging
 import re
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from re import Pattern
 
-from .models import Evidence, FileResult, Issue, ScanResult, Severity
+from .models import DiscoveryStats, Evidence, FileResult, Issue, ScanResult, Severity
 from .reader import discover_files, read_lines
 
 LOGGER = logging.getLogger(__name__)
@@ -94,10 +95,15 @@ class LogAnalyzer:
         include_patterns: Sequence[str] = (),
         exclude_patterns: Sequence[str] = (),
         skip_reports: bool = True,
+        optional_paths: bool = False,
+        strict: bool = False,
     ) -> ScanResult:
-        result = ScanResult(started_at=datetime.now().astimezone())
+        result = ScanResult(started_at=datetime.now().astimezone(), strict=strict)
+        stats = DiscoveryStats()
 
         def on_issue(issue: Issue) -> None:
+            if optional_paths and issue.code == "missing_path":
+                issue = replace(issue, blocking=False, code="optional_missing")
             result.issues.append(issue)
             LOGGER.warning("%s: %s", issue.path, issue.message)
 
@@ -109,8 +115,20 @@ class LogAnalyzer:
             include_patterns=include_patterns,
             exclude_patterns=exclude_patterns,
             skip_reports=skip_reports,
+            stats=stats,
         ):
             LOGGER.info("Analizando %s", path)
             result.files.append(self.analyze_file(path, result))
+        if not result.files:
+            if stats.skipped:
+                code, message = (
+                    "empty_selection",
+                    "Sin archivos elegibles tras aplicar filtros",
+                )
+            elif stats.directories:
+                code, message = "empty_directory", "Directorio sin archivos analizables"
+            else:
+                code, message = "no_readable_inputs", "No hay entradas legibles"
+            on_issue(Issue(paths[0] if paths else Path("."), message, code=code))
         result.finished_at = datetime.now().astimezone()
         return result

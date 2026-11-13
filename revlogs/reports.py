@@ -38,6 +38,7 @@ def console_summary(result: ScanResult) -> str:
             f"Incidencias de lectura/rutas: {len(result.issues)}"
         ),
         "",
+        f"Estado operativo: {'fallido' if result.operational_failed else 'completo'} | Avisos: {sum(not i.blocking for i in result.issues)} | Estricto: {result.strict}",
         "ERRORES  WARNINGS  LÍNEAS  ESTADO     ARCHIVO",
     ]
     for item in result.files:
@@ -59,6 +60,7 @@ class MarkdownRenderer:
         if result.finished_at is not None:
             yield f"Fin: {result.finished_at.isoformat(timespec='seconds')}\n\n"
         yield "## Resumen ejecutivo\n\n"
+        yield f"Estado operativo: **{'fallido' if result.operational_failed else 'completo'}**; modo estricto: {result.strict}.\n\n"
         yield "| Métrica | Total |\n| --- | ---: |\n"
         yield f"| Archivos procesados (incluye parciales) | {len(result.files)} |\n"
         yield f"| Líneas leídas | {sum(f.lines_read for f in result.files)} |\n"
@@ -113,7 +115,8 @@ class MarkdownRenderer:
         if not result.issues:
             yield "Sin incidencias.\n"
         for issue in result.issues:
-            yield f"- {_safe(str(issue.path))}: {_safe(issue.message)}\n"
+            level = "Error" if issue.blocking else "Aviso"
+            yield f"- {level} [{_safe(issue.code)}] {_safe(str(issue.path))}: {_safe(issue.message)}\n"
 
 
 def write_report(path: Path, result: ScanResult, renderer: ReportRenderer) -> None:
