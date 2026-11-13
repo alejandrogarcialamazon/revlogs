@@ -6,6 +6,7 @@ from collections.abc import Callable, Generator, Iterator, Sequence
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from .limits import ResourceLimitError, ScanBudget, ScanLimits
 from .models import REPORT_MARKER, DiscoveryStats, Issue
 from .safe_io import LogSource, UnsafeLogError, open_log
 
@@ -32,6 +33,7 @@ def discover_sources(
     exclude_patterns: Sequence[str] = (),
     skip_reports: bool = True,
     stats: DiscoveryStats | None = None,
+    budget: ScanBudget | None = None,
 ) -> Generator[LogSource, None, None]:
     """Valida rutas y omite duplicados, archivos especiales y enlaces simbólicos.
 
@@ -40,6 +42,7 @@ def discover_sources(
     """
     seen: set[tuple[int, int]] = set()
     stats = stats if stats is not None else DiscoveryStats()
+    budget = budget if budget is not None else ScanBudget(ScanLimits())
     excluded_paths = {path.resolve() for path in excluded}
 
     def report(path: Path, exc: OSError) -> None:
@@ -59,8 +62,11 @@ def discover_sources(
             for pattern in patterns
         )
 
-    def walk(path: Path, descend: bool, base: Path) -> Iterator[LogSource]:
+    def walk(
+        path: Path, descend: bool, base: Path, depth: int = 0
+    ) -> Iterator[LogSource]:
         try:
+            budget.visit()
             if matches(path, base, exclude_patterns):
                 stats.skipped += 1
                 return
@@ -95,24 +101,29 @@ def discover_sources(
                                 stats.skipped += 1
                                 return
                         seen.add(identity)
+                        budget.admit_file()
                         yield source
             elif stat.S_ISDIR(info.st_mode):
                 stats.directories += 1
                 if not descend:
                     return
+                if depth > budget.limits.max_depth:
+                    on_issue(
+                        Issue(
+                            path,
+                            "Límite de profundidad alcanzado",
+                            code="resource_limit",
+                        )
+                    )
+                    return
                 with os.scandir(path) as entries:
                     for entry in entries:
                         child = Path(entry.path)
-                        try:
-                            if entry.is_dir(follow_symlinks=False):
-                                if recursive:
-                                    yield from walk(child, True, base)
-                            else:
-                                yield from walk(child, False, base)
-                        except OSError as exc:
-                            report(child, exc)
+                        yield from walk(child, recursive, base, depth + 1)
             else:
                 on_issue(Issue(path, "No es un archivo regular; omitido"))
+        except ResourceLimitError:
+            raise
         except OSError as exc:
             report(path, exc)
 
@@ -123,7 +134,12 @@ def discover_sources(
         except OSError as exc:
             report(expanded, exc)
             continue
-        yield from walk(expanded, True, base)
+        try:
+            yield from walk(expanded, True, base)
+        except ResourceLimitError as exc:
+            budget.stopped = True
+            on_issue(Issue(expanded, str(exc), code="resource_limit"))
+            return
 
 
 def discover_files(
@@ -156,18 +172,44 @@ def discover_files(
         sources.close()
 
 
-def read_lines(path: Path | LogSource) -> Iterator[tuple[int, str, bool]]:
+def read_lines(
+    path: Path | LogSource, *, budget: ScanBudget | None = None
+) -> Iterator[tuple[int, str, bool]]:
     """Devuelve número, texto y uso de latin-1 por línea física.
 
     La decodificación por línea permite tolerar archivos con codificación mixta
     sin releerlos ni perder resultados ya contados. Los errores de E/S se
     propagan al analizador, que conserva los resultados parciales.
     """
+    budget = budget if budget is not None else ScanBudget(ScanLimits())
     if isinstance(path, Path):
         with open_log(path) as source:
-            yield from read_lines(source)
+            yield from read_lines(source, budget=budget)
         return
-    for number, raw in enumerate(path.stream, start=1):
+    file_bytes = 0
+    number = 0
+    while True:
+        limits = budget.limits
+        size = (
+            min(
+                limits.max_line_bytes,
+                max(0, limits.max_file_bytes - file_bytes),
+                max(0, limits.max_total_bytes - budget.bytes_read),
+            )
+            + 1
+        )
+        raw = path.stream.readline(size)
+        if not raw:
+            return
+        number += 1
+        file_bytes += len(raw)
+        budget.bytes_read += len(raw)
+        if budget.bytes_read > limits.max_total_bytes:
+            raise ResourceLimitError("Límite global de bytes alcanzado", stop_scan=True)
+        if file_bytes > limits.max_file_bytes:
+            raise ResourceLimitError("Límite de bytes por archivo alcanzado")
+        if len(raw) > limits.max_line_bytes:
+            raise ResourceLimitError(f"Línea {number}: supera el límite de bytes")
         fallback = False
         try:
             text = raw.decode("utf-8")

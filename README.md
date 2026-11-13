@@ -91,6 +91,12 @@ confiables: las regex complejas pueden degradar mucho el tiempo de ejecución.
 
 ## Streaming y codificación
 
+El scan aplica límites de línea, archivo, bytes globales, archivos, entradas y
+profundidad. Las muestras e incidencias tienen límites globales de memoria.
+Un corte de lectura/recorrido se informa como incompleto con código 2; reducir
+muestras conserva los totales. Ver [mejora 7](docs/MEJORA-07-LIMITES.md) para
+valores y opciones. Ejemplo: `--max-line-bytes 2097152 --max-depth 16`.
+
 La apertura segura requiere Linux con O_PATH y `/proc/self/fd`: valida tipo e
 identidad mediante descriptores y rechaza componentes simbólicos. Cabecera y
 contenido usan el mismo stream. Véase [mejora 6](docs/MEJORA-06-APERTURA-SEGURA.md).

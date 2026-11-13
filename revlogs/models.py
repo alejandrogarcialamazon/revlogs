@@ -59,10 +59,26 @@ class ScanResult:
     files: list[FileResult] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     strict: bool = False
+    bytes_read: int = 0
+    issues_omitted: int = 0
+    omitted_blocking: bool = False
+    details_limited: bool = False
+
+    def add_issue(self, issue: Issue, maximum: int = 1000) -> None:
+        if len(self.issues) < maximum:
+            self.issues.append(issue)
+        else:
+            self.issues_omitted += 1
+            self.omitted_blocking |= issue.blocking
 
     @property
     def operational_failed(self) -> bool:
-        return not self.files or any(i.blocking or self.strict for i in self.issues)
+        return (
+            not self.files
+            or self.omitted_blocking
+            or (self.strict and self.issues_omitted > 0)
+            or any(i.blocking or self.strict for i in self.issues)
+        )
 
     def total(self, severity: Severity) -> int:
         return sum(item.categories[severity].occurrences for item in self.files)

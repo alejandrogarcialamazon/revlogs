@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from re import Pattern
 
+from .limits import ResourceLimitError, ScanBudget, ScanLimits
 from .models import DiscoveryStats, Evidence, FileResult, Issue, ScanResult, Severity
 from .reader import discover_sources, read_lines
 from .safe_io import LogSource
@@ -31,6 +32,7 @@ class LogAnalyzer:
         warning_patterns: Sequence[str] = DEFAULT_WARNING_PATTERNS,
         max_details: int = 50,
         max_excerpt_chars: int = 1000,
+        limits: ScanLimits | None = None,
     ) -> None:
         if max_details < 0 or max_excerpt_chars < 1:
             raise ValueError("Límites de evidencias inválidos")
@@ -40,6 +42,7 @@ class LogAnalyzer:
         }
         self.max_details = max_details
         self.max_excerpt_chars = max_excerpt_chars
+        self.limits = limits or ScanLimits()
 
     @staticmethod
     def _compile(patterns: Sequence[str]) -> Pattern[str]:
@@ -53,12 +56,18 @@ class LogAnalyzer:
         return compiled
 
     def analyze_file(
-        self, path: Path, result: ScanResult, *, source: LogSource | None = None
+        self,
+        path: Path,
+        result: ScanResult,
+        *,
+        source: LogSource | None = None,
+        budget: ScanBudget | None = None,
     ) -> FileResult:
         file_result = FileResult(path)
+        budget = budget if budget is not None else ScanBudget(self.limits)
         try:
             for number, line, fallback in read_lines(
-                source if source is not None else path
+                source if source is not None else path, budget=budget
             ):
                 file_result.lines_read += 1
                 file_result.fallback_lines += int(fallback)
@@ -74,14 +83,23 @@ class LogAnalyzer:
                     category.occurrences += count
                     category.matching_lines += 1
                     if len(category.evidence) < self.max_details:
+                        if budget.details >= self.limits.max_total_details:
+                            result.details_limited = True
+                            continue
                         excerpt = line[: self.max_excerpt_chars]
                         if len(line) > self.max_excerpt_chars:
                             excerpt += " … [truncado]"
                         category.evidence.append(Evidence(number, excerpt, count))
+                        budget.details += 1
             file_result.complete = True
         except OSError as exc:
-            issue = Issue(path, str(exc))
-            result.issues.append(issue)
+            limited = isinstance(exc, ResourceLimitError)
+            if isinstance(exc, ResourceLimitError) and exc.stop_scan:
+                budget.stopped = True
+            issue = Issue(
+                path, str(exc), code="resource_limit" if limited else "io_error"
+            )
+            result.add_issue(issue, self.limits.max_issues)
             LOGGER.warning("Lectura incompleta de %s: %s", path, exc)
         if file_result.fallback_lines:
             LOGGER.warning(
@@ -105,11 +123,12 @@ class LogAnalyzer:
     ) -> ScanResult:
         result = ScanResult(started_at=datetime.now().astimezone(), strict=strict)
         stats = DiscoveryStats()
+        budget = ScanBudget(self.limits)
 
         def on_issue(issue: Issue) -> None:
             if optional_paths and issue.code == "missing_path":
                 issue = replace(issue, blocking=False, code="optional_missing")
-            result.issues.append(issue)
+            result.add_issue(issue, self.limits.max_issues)
             LOGGER.warning("%s: %s", issue.path, issue.message)
 
         sources = discover_sources(
@@ -121,13 +140,16 @@ class LogAnalyzer:
             exclude_patterns=exclude_patterns,
             skip_reports=skip_reports,
             stats=stats,
+            budget=budget,
         )
         try:
             for source in sources:
                 LOGGER.info("Analizando %s", source.path)
                 result.files.append(
-                    self.analyze_file(source.path, result, source=source)
+                    self.analyze_file(source.path, result, source=source, budget=budget)
                 )
+                if budget.stopped:
+                    break
         finally:
             sources.close()
         if not result.files:
@@ -142,4 +164,5 @@ class LogAnalyzer:
                 code, message = "no_readable_inputs", "No hay entradas legibles"
             on_issue(Issue(paths[0] if paths else Path("."), message, code=code))
         result.finished_at = datetime.now().astimezone()
+        result.bytes_read = budget.bytes_read
         return result

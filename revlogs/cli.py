@@ -12,6 +12,7 @@ from .analyzer import (
     DEFAULT_WARNING_PATTERNS,
     LogAnalyzer,
 )
+from .limits import ScanLimits
 from .models import Severity
 from .reader import DEFAULT_PATHS
 from .reports import MarkdownRenderer, console_summary, write_report
@@ -99,6 +100,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Devuelve 1 si hay errores, o errores/advertencias respectivamente",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
+    defaults = ScanLimits()
+    for name in (
+        "max_line_bytes",
+        "max_file_bytes",
+        "max_total_bytes",
+        "max_files",
+        "max_entries",
+        "max_depth",
+        "max_total_details",
+        "max_issues",
+    ):
+        parser.add_argument(
+            "--" + name.replace("_", "-"),
+            type=_nonnegative
+            if name in ("max_depth", "max_total_details")
+            else _positive,
+            default=getattr(defaults, name),
+        )
     return parser
 
 
@@ -126,6 +145,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             warning_patterns=(*DEFAULT_WARNING_PATTERNS, *args.warning_pattern),
             max_details=args.max_details,
             max_excerpt_chars=args.max_excerpt_chars,
+            limits=ScanLimits(
+                **{
+                    name: getattr(args, name)
+                    for name in ScanLimits.__dataclass_fields__
+                }
+            ),
         )
     except (re.error, ValueError) as exc:
         parser.error(f"Patrones o límites inválidos: {exc}")

@@ -30,6 +30,7 @@ def _safe(value: str) -> str:
 def console_summary(result: ScanResult) -> str:
     rows = [
         "RESUMEN DE LOGS",
+        f"Bytes leídos: {result.bytes_read} | Incidencias sin detalle: {result.issues_omitted} | Muestras limitadas globalmente: {result.details_limited}",
         (
             f"Archivos: {len(result.files)} | "
             f"Líneas: {sum(item.lines_read for item in result.files)} | "
@@ -60,6 +61,7 @@ class MarkdownRenderer:
         if result.finished_at is not None:
             yield f"Fin: {result.finished_at.isoformat(timespec='seconds')}\n\n"
         yield "## Resumen ejecutivo\n\n"
+        yield f"Bytes leídos: {result.bytes_read}; incidencias sin detalle: {result.issues_omitted}; muestras limitadas globalmente: {result.details_limited}.\n\n"
         yield f"Estado operativo: **{'fallido' if result.operational_failed else 'completo'}**; modo estricto: {result.strict}.\n\n"
         yield "| Métrica | Total |\n| --- | ---: |\n"
         yield f"| Archivos procesados (incluye parciales) | {len(result.files)} |\n"

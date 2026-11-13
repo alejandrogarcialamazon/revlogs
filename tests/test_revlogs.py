@@ -97,7 +97,9 @@ class RevlogsTests(unittest.TestCase):
         self.assertIn("permiso", issues[0].message)
 
     def test_failure_mid_read_keeps_partial_counts(self) -> None:
-        def failing_lines(path: Path) -> Iterator[tuple[int, str, bool]]:
+        def failing_lines(
+            path: Path, **kwargs: object
+        ) -> Iterator[tuple[int, str, bool]]:
             yield 1, "ERROR", False
             raise PermissionError("Acceso revocado")
 
