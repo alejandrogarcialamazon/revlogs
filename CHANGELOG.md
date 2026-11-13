@@ -49,3 +49,8 @@
 
 Esta es una versión inicial. Los filtros para evitar reprocesar reportes previos,
 los parsers estructurados y las demás mejoras del informe siguen pendientes.
+
+## 1.1.0 — 13/11/2026
+
+- Redacción optativa de evidencias y análisis incremental con checkpoints.
+- Distribución verificable SHA-256, ejemplos sintéticos y guías operativas.

@@ -193,3 +193,10 @@ python3 -m unittest discover -s tests -v
 Las pruebas cubren conteos, categorías mixtas, muestras limitadas, codificación,
 rutas repetidas, recursión, permisos, lecturas parciales, archivos especiales,
 escape de Markdown, publicación del reporte y códigos de salida de la CLI.
+
+## Privacidad, incremental y distribución
+
+`--redact` protege evidencias; `--state RUTA` analiza líneas nuevas completas.
+Consultar [mejora 13](docs/MEJORA-13-REDACCION.md),
+[mejora 14](docs/MEJORA-14-INCREMENTAL.md),
+[operación y paquetes](docs/OPERACION.md) y [contribuciones](CONTRIBUTING.md).

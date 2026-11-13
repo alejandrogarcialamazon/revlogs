@@ -1,0 +1,3 @@
+2026-11-13T10:00:00Z INFO synthetic service started
+2026-11-13T10:01:00Z WARNING synthetic retry
+2026-11-13T10:02:00Z ERROR password="synthetic-only" request failed

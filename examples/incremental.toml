@@ -1,0 +1,6 @@
+schema_version = 1
+[revlogs]
+paths = ["sample.log"]
+redact = true
+state = "../reports/demo-state.json"
+report_format = "json"
