@@ -12,6 +12,10 @@ comprobar la configuración compartida de Codex y OpenCode sin leer credenciales
 
 ## Uso
 
+`--config archivo.toml` permite reutilizar rutas, reglas y límites. La CLI
+prevalece sobre TOML, y TOML sobre los valores predeterminados. Ver
+[mejora 11](docs/MEJORA-11-CONFIGURACION.md) y [ejemplo](examples/revlogs.toml).
+
 Desde este directorio, sin instalación:
 
 ```bash

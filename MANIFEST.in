@@ -3,3 +3,5 @@ recursive-include docs *.md
 recursive-include tests *.py
 recursive-include tools *.py
 global-exclude __pycache__ *.py[cod]
+recursive-include revlogs/_vendor LICENSE
+recursive-include examples *.toml

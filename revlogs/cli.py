@@ -3,6 +3,7 @@
 import argparse
 import logging
 import re
+import sys
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from .analyzer import (
     DEFAULT_WARNING_PATTERNS,
     LogAnalyzer,
 )
+from .configuration import load_config
 from .input_formats import ReadOptions
 from .limits import ScanLimits
 from .models import Severity
@@ -39,15 +41,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Analiza logs de texto y genera un reporte Markdown."
     )
+    parser.add_argument("--config", type=Path, help="Archivo TOML explícito")
     parser.add_argument(
         "paths",
         nargs="*",
         type=Path,
         help="Archivos/directorios; por defecto se usan rutas típicas de Linux",
     )
-    parser.add_argument("-r", "--recursive", action="store_true")
     parser.add_argument(
-        "--strict", action="store_true", help="Tratar avisos operativos como errores"
+        "-r", "--recursive", action=argparse.BooleanOptionalAction, default=False
+    )
+    parser.add_argument(
+        "--strict",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Tratar avisos operativos como errores",
     )
     parser.add_argument(
         "--include",
@@ -65,7 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--include-reports",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=False,
         help="Permitir explícitamente el análisis de reportes de revlogs",
     )
     parser.add_argument("-o", "--output", type=Path, help="Reporte .md de destino")
@@ -100,7 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("error", "warning"),
         help="Devuelve 1 si hay errores, o errores/advertencias respectivamente",
     )
-    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "-v", "--verbose", action=argparse.BooleanOptionalAction, default=False
+    )
     parser.add_argument(
         "--compression", choices=("auto", "none", "gzip"), default="auto"
     )
@@ -150,7 +161,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if "--help" in arguments or "-h" in arguments:
+        parser.parse_args(arguments)
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", type=Path)
+    config_args, _ = pre.parse_known_args(arguments)
+    try:
+        configured = load_config(config_args.config) if config_args.config else {}
+    except (OSError, ValueError) as exc:
+        parser.error(f"No se pudo cargar la configuración: {exc}")
+    defaults = vars(parser.parse_args([]))
+    explicit_parser = build_parser()
+    for action in explicit_parser._actions:
+        action.default = argparse.SUPPRESS
+    explicit = vars(explicit_parser.parse_args(arguments))
+    args = argparse.Namespace(**(defaults | configured | explicit))
     if args.format in ("json", "syslog") and any(
         (
             args.error_pattern,

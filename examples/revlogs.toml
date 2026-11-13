@@ -1,0 +1,11 @@
+schema_version = 1
+
+[revlogs]
+paths = ["./logs"]
+recursive = true
+format = "auto"
+include = ["*.log", "*.log.1", "*.gz"]
+exclude = ["archive"]
+strict = false
+max_line_bytes = 1048576
+max_depth = 32
