@@ -19,6 +19,7 @@ from .matching import (
     SearchError,
 )
 from .models import DiscoveryStats, Evidence, FileResult, Issue, ScanResult
+from .parsers import LogParser, ParseError
 from .reader import discover_sources, read_lines
 from .safe_io import LogSource
 
@@ -44,9 +45,13 @@ class LogAnalyzer:
         warning_literals: Sequence[str] = (),
         regex_timeout: float = 0.5,
         regex_memory_mib: int = 256,
+        format: str = "text",
+        level_fields: Sequence[str] = ("level", "severity", "log.level"),
+        numeric_levels: str = "python",
     ) -> None:
         if max_details < 0 or max_excerpt_chars < 1:
             raise ValueError("Límites de evidencias inválidos")
+        self.parser = LogParser(format, level_fields, numeric_levels)
         self.matcher = PatternMatcher(
             error_patterns,
             warning_patterns,
@@ -81,7 +86,18 @@ class LogAnalyzer:
             ):
                 file_result.lines_read += 1
                 file_result.fallback_lines += int(fallback)
-                for severity, count in counter(line).items():
+                try:
+                    parsed = self.parser.parse(line, counter)
+                except ParseError as exc:
+                    file_result.parse_errors += 1
+                    result.add_issue(
+                        Issue(path, f"Línea {number}: {exc}", code="parse_error"),
+                        self.limits.max_issues,
+                    )
+                    continue
+                file_result.structured_lines += int(parsed.format != "text")
+                file_result.text_lines += int(parsed.format == "text")
+                for severity, count in parsed.counts.items():
                     if not count:
                         continue
                     category = file_result.categories[severity]
@@ -96,7 +112,7 @@ class LogAnalyzer:
                             excerpt += " … [truncado]"
                         category.evidence.append(Evidence(number, excerpt, count))
                         budget.details += 1
-            file_result.complete = True
+            file_result.complete = file_result.parse_errors == 0
         except OSError as exc:
             limited = isinstance(exc, ResourceLimitError)
             if isinstance(exc, ResourceLimitError) and exc.stop_scan:

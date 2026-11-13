@@ -64,6 +64,11 @@ python3 -m venv .venv
 
 ## Reglas y conteos
 
+`--format text` mantiene el comportamiento original. JSONL (`--format json`)
+y syslog con PRI (`--format syslog`) clasifican por nivel, una vez por evento;
+no buscan ERROR dentro de mensajes INFO. `--format auto` admite entradas mixtas.
+Ver [mejora 9](docs/MEJORA-09-PARSERS.md) para campos, números y errores de parseo.
+
 Para texto fijo, usar `--error-literal 'a+b'` o `--warning-literal '[deprecated]'`.
 Las regex personalizadas se aíslan en un proceso Linux con timeout por línea
 (`--regex-timeout`, 0.5 s) y memoria limitada (`--regex-memory-mib`, 256).

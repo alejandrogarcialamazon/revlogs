@@ -100,6 +100,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Devuelve 1 si hay errores, o errores/advertencias respectivamente",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--format", choices=("text", "auto", "json", "syslog"), default="text"
+    )
+    parser.add_argument("--level-field", action="append", default=None)
+    parser.add_argument(
+        "--numeric-levels", choices=("python", "syslog"), default="python"
+    )
     parser.add_argument("--error-literal", action="append", default=[], metavar="TEXT")
     parser.add_argument(
         "--warning-literal", action="append", default=[], metavar="TEXT"
@@ -135,6 +142,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.format in ("json", "syslog") and any(
+        (
+            args.error_pattern,
+            args.warning_pattern,
+            args.error_literal,
+            args.warning_literal,
+        )
+    ):
+        parser.error("Patrones y literales solo se aplican a --format text o auto")
     if any(not pattern.strip() for pattern in (*args.include, *args.exclude)):
         parser.error("Los patrones de inclusión/exclusión no pueden estar vacíos")
     logging.basicConfig(
@@ -160,6 +176,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             warning_literals=args.warning_literal,
             regex_timeout=args.regex_timeout,
             regex_memory_mib=args.regex_memory_mib,
+            format=args.format,
+            level_fields=args.level_field or ("level", "severity", "log.level"),
+            numeric_levels=args.numeric_levels,
             limits=ScanLimits(
                 **{
                     name: getattr(args, name)

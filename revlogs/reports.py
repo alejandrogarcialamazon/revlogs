@@ -30,6 +30,7 @@ def _safe(value: str) -> str:
 def console_summary(result: ScanResult) -> str:
     rows = [
         "RESUMEN DE LOGS",
+        f"Líneas estructuradas: {sum(f.structured_lines for f in result.files)} | Texto: {sum(f.text_lines for f in result.files)} | Fallos de parseo: {sum(f.parse_errors for f in result.files)}",
         f"Bytes leídos: {result.bytes_read} | Incidencias sin detalle: {result.issues_omitted} | Muestras limitadas globalmente: {result.details_limited}",
         (
             f"Archivos: {len(result.files)} | "
@@ -61,6 +62,7 @@ class MarkdownRenderer:
         if result.finished_at is not None:
             yield f"Fin: {result.finished_at.isoformat(timespec='seconds')}\n\n"
         yield "## Resumen ejecutivo\n\n"
+        yield f"Líneas estructuradas: {sum(f.structured_lines for f in result.files)}; texto: {sum(f.text_lines for f in result.files)}; fallos de parseo: {sum(f.parse_errors for f in result.files)}.\n\n"
         yield f"Bytes leídos: {result.bytes_read}; incidencias sin detalle: {result.issues_omitted}; muestras limitadas globalmente: {result.details_limited}.\n\n"
         yield f"Estado operativo: **{'fallido' if result.operational_failed else 'completo'}**; modo estricto: {result.strict}.\n\n"
         yield "| Métrica | Total |\n| --- | ---: |\n"
@@ -74,7 +76,8 @@ class MarkdownRenderer:
             "sin distinguir mayúsculas. Una línea puede aportar varias "
             "coincidencias y pertenecer a ambas categorías. Las evidencias son "
             "muestras limitadas; los contadores incluyen todas las coincidencias "
-            "de las líneas leídas. Los archivos parciales pueden estar incompletos.\n\n"
+            "de las líneas clasificadas correctamente. Los archivos parciales pueden "
+            "incluir líneas leídas sin clasificar.\n\n"
         )
         yield "## Desglose por archivo\n\n"
         yield "| Archivo | Líneas | Errores | Warnings | Estado | Latin-1 |\n"
