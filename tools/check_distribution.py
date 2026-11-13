@@ -1,6 +1,7 @@
 """Prueba el wheel instalado en un venv nuevo, fuera del árbol fuente."""
 
 import argparse
+import gzip
 import subprocess
 import tempfile
 import venv
@@ -74,6 +75,36 @@ def verify(directory: Path) -> None:
             encoding="utf-8"
         ).replace("\\_", "_"):
             raise RuntimeError("El wheel instalado no controla el timeout de regex")
+        compressed = root / "events.gz"
+        compressed.write_bytes(
+            gzip.compress(
+                '{"level":"INFO","message":"ERROR"}\n{"level":"WARN"}\n'.encode(
+                    "utf-16"
+                )
+            )
+        )
+        structured = subprocess.run(
+            [
+                str(cli),
+                str(compressed),
+                "--format",
+                "json",
+                "--encoding",
+                "utf-16",
+                "-o",
+                str(root / "structured.md"),
+            ],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=15,
+        )
+        if (
+            structured.returncode != 0
+            or "Errores: 0" not in structured.stdout
+            or "Advertencias: 1" not in structured.stdout
+        ):
+            raise RuntimeError("El wheel instalado no integra gzip, UTF-16 y JSON")
         subprocess.run(
             [str(python), "-m", "pip", "check"], cwd=root, check=True, timeout=30
         )

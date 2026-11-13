@@ -80,6 +80,9 @@ class MarkdownRenderer:
             "incluir líneas leídas sin clasificar.\n\n"
         )
         yield "## Desglose por archivo\n\n"
+        for item in result.files:
+            yield f"- {_safe(str(item.path))}: codificación {_safe(item.encoding)}, compresión {item.compression}, líneas con pérdida {item.decode_issues}.\n"
+        yield "\n"
         yield "| Archivo | Líneas | Errores | Warnings | Estado | Latin-1 |\n"
         yield "| --- | ---: | ---: | ---: | --- | ---: |\n"
         for item in result.files:

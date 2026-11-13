@@ -102,6 +102,12 @@ confiables: las regex complejas pueden degradar mucho el tiempo de ejecución.
 
 ## Streaming y codificación
 
+Gzip se lee por streaming con `--compression auto|none|gzip`. `--encoding auto`
+detecta BOM UTF-16/32 y conserva UTF-8/latin-1 para texto sin BOM; también se puede
+elegir una codificación explícita y `--decode-errors strict|replace|ignore`.
+Los límites de lectura se aplican al contenido descomprimido y existe un máximo
+separado `--max-compressed-bytes`. Ver [mejora 10](docs/MEJORA-10-LECTORES.md).
+
 El scan aplica límites de línea, archivo, bytes globales, archivos, entradas y
 profundidad. Las muestras e incidencias tienen límites globales de memoria.
 Un corte de lectura/recorrido se informa como incompleto con código 2; reducir

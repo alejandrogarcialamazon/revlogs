@@ -13,6 +13,7 @@ class ResourceLimitError(OSError):
 class ScanLimits:
     max_line_bytes: int = 1024 * 1024
     max_file_bytes: int = 1024**3
+    max_compressed_bytes: int = 1024**3
     max_total_bytes: int = 4 * 1024**3
     max_files: int = 10_000
     max_entries: int = 100_000
@@ -24,6 +25,7 @@ class ScanLimits:
         for name in (
             "max_line_bytes",
             "max_file_bytes",
+            "max_compressed_bytes",
             "max_total_bytes",
             "max_files",
             "max_entries",

@@ -36,6 +36,9 @@ class FileResult:
     structured_lines: int = 0
     text_lines: int = 0
     parse_errors: int = 0
+    decode_issues: int = 0
+    encoding: str = "auto"
+    compression: str = "none"
     categories: dict[Severity, CategoryResult] = field(
         default_factory=lambda: {severity: CategoryResult() for severity in Severity}
     )

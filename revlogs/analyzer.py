@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
+from .input_formats import InputFormatError, ReadOptions
 from .limits import ResourceLimitError, ScanBudget, ScanLimits
 from .matching import (
     DEFAULT_ERROR_PATTERNS as DEFAULT_ERROR_PATTERNS,
@@ -48,10 +49,12 @@ class LogAnalyzer:
         format: str = "text",
         level_fields: Sequence[str] = ("level", "severity", "log.level"),
         numeric_levels: str = "python",
+        read_options: ReadOptions | None = None,
     ) -> None:
         if max_details < 0 or max_excerpt_chars < 1:
             raise ValueError("Límites de evidencias inválidos")
         self.parser = LogParser(format, level_fields, numeric_levels)
+        self.read_options = read_options or ReadOptions()
         self.matcher = PatternMatcher(
             error_patterns,
             warning_patterns,
@@ -79,10 +82,34 @@ class LogAnalyzer:
                     path, result, source=source, budget=budget, counter=active_counter
                 )
         file_result = FileResult(path)
+        file_result.compression = (
+            source.compression if source is not None else self.read_options.compression
+        )
+        file_result.encoding = self.read_options.encoding
+
+        def on_encoding(name: str) -> None:
+            file_result.encoding = name
+
+        def on_decode_issue(number: int) -> None:
+            file_result.decode_issues += 1
+            result.add_issue(
+                Issue(
+                    path,
+                    f"Línea {number}: decodificación con {self.read_options.errors}",
+                    blocking=False,
+                    code="decode_loss",
+                ),
+                self.limits.max_issues,
+            )
+
         budget = budget if budget is not None else ScanBudget(self.limits)
         try:
             for number, line, fallback in read_lines(
-                source if source is not None else path, budget=budget
+                source if source is not None else path,
+                budget=budget,
+                options=self.read_options,
+                on_decode_issue=on_decode_issue,
+                on_encoding=on_encoding,
             ):
                 file_result.lines_read += 1
                 file_result.fallback_lines += int(fallback)
@@ -123,7 +150,7 @@ class LogAnalyzer:
                 path,
                 str(exc),
                 code=exc.code
-                if isinstance(exc, SearchError)
+                if isinstance(exc, (SearchError, InputFormatError))
                 else "resource_limit"
                 if limited
                 else "io_error",
@@ -170,6 +197,7 @@ class LogAnalyzer:
             skip_reports=skip_reports,
             stats=stats,
             budget=budget,
+            read_options=self.read_options,
         )
         with self.matcher.session() as active_counter:
             try:

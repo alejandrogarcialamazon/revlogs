@@ -1,11 +1,20 @@
 """Descubrimiento de archivos y lectura incremental tolerante a codificación."""
 
+import gzip
 import os
 import stat
+import zlib
 from collections.abc import Callable, Generator, Iterator, Sequence
 from fnmatch import fnmatchcase
 from pathlib import Path
 
+from .input_formats import (
+    InputFormatError,
+    ReadOptions,
+    content_source,
+    raw_line,
+    select_encoding,
+)
 from .limits import ResourceLimitError, ScanBudget, ScanLimits
 from .models import REPORT_MARKER, DiscoveryStats, Issue
 from .safe_io import LogSource, UnsafeLogError, open_log
@@ -34,6 +43,7 @@ def discover_sources(
     skip_reports: bool = True,
     stats: DiscoveryStats | None = None,
     budget: ScanBudget | None = None,
+    read_options: ReadOptions | None = None,
 ) -> Generator[LogSource, None, None]:
     """Valida rutas y omite duplicados, archivos especiales y enlaces simbólicos.
 
@@ -43,11 +53,14 @@ def discover_sources(
     seen: set[tuple[int, int]] = set()
     stats = stats if stats is not None else DiscoveryStats()
     budget = budget if budget is not None else ScanBudget(ScanLimits())
+    read_options = read_options or ReadOptions()
     excluded_paths = {path.resolve() for path in excluded}
 
     def report(path: Path, exc: OSError) -> None:
         code = (
-            "unsafe_input"
+            exc.code
+            if isinstance(exc, InputFormatError)
+            else "unsafe_input"
             if isinstance(exc, UnsafeLogError)
             else "missing_path"
             if isinstance(exc, FileNotFoundError)
@@ -89,20 +102,23 @@ def discover_sources(
                     if not os.access(path, os.R_OK):
                         raise PermissionError(f"Sin permiso de lectura: {path}")
                     with open_log(path, expected=info) as source:
-                        if skip_reports:
-                            prefix = source.stream.read(256)
-                            source.stream.seek(0)
-                            if prefix.startswith(
-                                (
-                                    REPORT_MARKER.encode(),
-                                    "# Reporte de análisis de logs\n\nInicio: ".encode(),
-                                )
-                            ):
-                                stats.skipped += 1
-                                return
-                        seen.add(identity)
-                        budget.admit_file()
-                        yield source
+                        with content_source(
+                            source, read_options, budget.limits
+                        ) as content:
+                            if skip_reports:
+                                prefix = content.stream.read(256)
+                                content.stream.seek(0)
+                                if prefix.startswith(
+                                    (
+                                        REPORT_MARKER.encode(),
+                                        "# Reporte de análisis de logs\n\nInicio: ".encode(),
+                                    )
+                                ):
+                                    stats.skipped += 1
+                                    return
+                            seen.add(identity)
+                            budget.admit_file()
+                            yield content
             elif stat.S_ISDIR(info.st_mode):
                 stats.directories += 1
                 if not descend:
@@ -122,8 +138,10 @@ def discover_sources(
                         yield from walk(child, recursive, base, depth + 1)
             else:
                 on_issue(Issue(path, "No es un archivo regular; omitido"))
-        except ResourceLimitError:
-            raise
+        except ResourceLimitError as exc:
+            if exc.stop_scan:
+                raise
+            on_issue(Issue(path, str(exc), code="resource_limit"))
         except OSError as exc:
             report(path, exc)
 
@@ -173,7 +191,12 @@ def discover_files(
 
 
 def read_lines(
-    path: Path | LogSource, *, budget: ScanBudget | None = None
+    path: Path | LogSource,
+    *,
+    budget: ScanBudget | None = None,
+    options: ReadOptions | None = None,
+    on_decode_issue: Callable[[int], None] | None = None,
+    on_encoding: Callable[[str], None] | None = None,
 ) -> Iterator[tuple[int, str, bool]]:
     """Devuelve número, texto y uso de latin-1 por línea física.
 
@@ -182,10 +205,26 @@ def read_lines(
     propagan al analizador, que conserva los resultados parciales.
     """
     budget = budget if budget is not None else ScanBudget(ScanLimits())
+    options = options or ReadOptions()
     if isinstance(path, Path):
         with open_log(path) as source:
-            yield from read_lines(source, budget=budget)
+            with content_source(source, options, budget.limits) as content:
+                yield from read_lines(
+                    content,
+                    budget=budget,
+                    options=options,
+                    on_decode_issue=on_decode_issue,
+                    on_encoding=on_encoding,
+                )
         return
+    try:
+        prefix = path.stream.read(4)
+        path.stream.seek(0)
+        encoding, width, newline = select_encoding(prefix, options.encoding)
+    except (gzip.BadGzipFile, EOFError, zlib.error) as exc:
+        raise InputFormatError("Gzip corrupto o truncado", "compression_error") from exc
+    if on_encoding is not None:
+        on_encoding(encoding)
     file_bytes = 0
     number = 0
     while True:
@@ -198,7 +237,12 @@ def read_lines(
             )
             + 1
         )
-        raw = path.stream.readline(size)
+        try:
+            raw = raw_line(path.stream, size, width, newline)
+        except (gzip.BadGzipFile, EOFError, zlib.error) as exc:
+            raise InputFormatError(
+                "Gzip corrupto o truncado", "compression_error"
+            ) from exc
         if not raw:
             return
         number += 1
@@ -212,10 +256,19 @@ def read_lines(
             raise ResourceLimitError(f"Línea {number}: supera el límite de bytes")
         fallback = False
         try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            text = raw.decode("latin-1")
-            fallback = True
+            text = raw.decode(encoding)
+        except UnicodeDecodeError as exc:
+            if options.encoding == "auto" and encoding == "utf-8":
+                text = raw.decode("latin-1")
+                fallback = True
+            elif options.errors == "strict":
+                raise InputFormatError(
+                    f"Línea {number}: bytes inválidos para {encoding}", "decode_error"
+                ) from exc
+            else:
+                text = raw.decode(encoding, errors=options.errors)
+                if on_decode_issue is not None:
+                    on_decode_issue(number)
         if number == 1:
             text = text.removeprefix("\ufeff")
         yield number, text.rstrip("\r\n"), fallback

@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import Protocol
 
 
 class UnsafeLogError(OSError):
@@ -18,7 +18,19 @@ class UnsafeLogError(OSError):
 @dataclass(frozen=True)
 class LogSource:
     path: Path
-    stream: BinaryIO
+    stream: "BinaryStream"
+    compression: str = "none"
+
+
+class BinaryStream(Protocol):
+    def read(self, size: int = -1, /) -> bytes: ...
+    def readline(self, size: int = -1, /) -> bytes: ...
+    def seek(self, offset: int, whence: int = 0, /) -> int: ...
+    def tell(self) -> int: ...
+    def close(self) -> None: ...
+    @property
+    def closed(self) -> bool: ...
+    def __iter__(self) -> Iterator[bytes]: ...
 
 
 def _validate(info: os.stat_result, expected: os.stat_result, path: Path) -> None:

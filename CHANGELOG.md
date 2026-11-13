@@ -1,5 +1,10 @@
 # Cambios
 
+## Mejoras 9 y 10 — 2026-11-13
+
+- Parsers de severidad JSONL y syslog con PRI, modo auto y errores de parseo explícitos.
+- Lectura gzip por descriptor, codificaciones configurables y políticas de pérdida visibles.
+
 ## Mejoras 7 y 8 — 2026-11-13
 
 - Presupuestos de lectura, recorrido, muestras e incidencias y estado parcial explícito.

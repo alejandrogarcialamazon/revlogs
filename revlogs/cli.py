@@ -12,6 +12,7 @@ from .analyzer import (
     DEFAULT_WARNING_PATTERNS,
     LogAnalyzer,
 )
+from .input_formats import ReadOptions
 from .limits import ScanLimits
 from .models import Severity
 from .reader import DEFAULT_PATHS
@@ -101,6 +102,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
+        "--compression", choices=("auto", "none", "gzip"), default="auto"
+    )
+    parser.add_argument("--encoding", default="auto")
+    parser.add_argument(
+        "--decode-errors", choices=("strict", "replace", "ignore"), default="strict"
+    )
+    parser.add_argument(
         "--format", choices=("text", "auto", "json", "syslog"), default="text"
     )
     parser.add_argument("--level-field", action="append", default=None)
@@ -122,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     for name in (
         "max_line_bytes",
         "max_file_bytes",
+        "max_compressed_bytes",
         "max_total_bytes",
         "max_files",
         "max_entries",
@@ -179,6 +188,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             format=args.format,
             level_fields=args.level_field or ("level", "severity", "log.level"),
             numeric_levels=args.numeric_levels,
+            read_options=ReadOptions(
+                args.compression, args.encoding, args.decode_errors
+            ),
             limits=ScanLimits(
                 **{
                     name: getattr(args, name)
