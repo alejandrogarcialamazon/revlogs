@@ -1,5 +1,11 @@
 # Cambios
 
+## Mejoras 5 y 6 — 2026-11-13
+
+- Estados operativos: rutas predeterminadas opcionales, selección vacía y modo estricto.
+- Apertura Linux validada por descriptor, sin seguir symlinks ni reabrir el log por nombre.
+- Pruebas de sustitución, FIFO sin bloqueos, rotación y liberación de recursos.
+
 ## Mejora 4 — 2026-11-06
 
 - GitHub Actions para pruebas Python 3.10–3.14, Ruff, mypy y empaquetado.

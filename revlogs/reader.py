@@ -2,11 +2,12 @@
 
 import os
 import stat
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterator, Sequence
 from fnmatch import fnmatchcase
 from pathlib import Path
 
 from .models import REPORT_MARKER, DiscoveryStats, Issue
+from .safe_io import LogSource, UnsafeLogError, open_log
 
 DEFAULT_PATHS: tuple[Path, ...] = tuple(
     Path(path)
@@ -21,7 +22,7 @@ DEFAULT_PATHS: tuple[Path, ...] = tuple(
 )
 
 
-def discover_files(
+def discover_sources(
     paths: Sequence[Path],
     *,
     recursive: bool,
@@ -31,7 +32,7 @@ def discover_files(
     exclude_patterns: Sequence[str] = (),
     skip_reports: bool = True,
     stats: DiscoveryStats | None = None,
-) -> Iterator[Path]:
+) -> Generator[LogSource, None, None]:
     """Valida rutas y omite duplicados, archivos especiales y enlaces simbólicos.
 
     Se usa scandir sin materializar todo el contenido de un directorio. Los
@@ -42,7 +43,13 @@ def discover_files(
     excluded_paths = {path.resolve() for path in excluded}
 
     def report(path: Path, exc: OSError) -> None:
-        code = "missing_path" if isinstance(exc, FileNotFoundError) else "io_error"
+        code = (
+            "unsafe_input"
+            if isinstance(exc, UnsafeLogError)
+            else "missing_path"
+            if isinstance(exc, FileNotFoundError)
+            else "io_error"
+        )
         on_issue(Issue(path, str(exc), code=code))
 
     def matches(path: Path, base: Path, patterns: Sequence[str]) -> bool:
@@ -52,20 +59,20 @@ def discover_files(
             for pattern in patterns
         )
 
-    def walk(path: Path, descend: bool, base: Path) -> Iterator[Path]:
+    def walk(path: Path, descend: bool, base: Path) -> Iterator[LogSource]:
         try:
-            resolved = path.resolve()
-            if any(
-                item == resolved or item in resolved.parents for item in excluded_paths
-            ):
-                stats.skipped += 1
-                return
             if matches(path, base, exclude_patterns):
                 stats.skipped += 1
                 return
             info = path.lstat()
             if stat.S_ISLNK(info.st_mode):
-                on_issue(Issue(path, "Enlace simbólico omitido"))
+                on_issue(Issue(path, "Enlace simbólico omitido", code="unsafe_input"))
+                return
+            resolved = path.resolve()
+            if any(
+                item == resolved or item in resolved.parents for item in excluded_paths
+            ):
+                stats.skipped += 1
                 return
             if stat.S_ISREG(info.st_mode):
                 if include_patterns and not matches(path, base, include_patterns):
@@ -75,19 +82,20 @@ def discover_files(
                 if identity not in seen:
                     if not os.access(path, os.R_OK):
                         raise PermissionError(f"Sin permiso de lectura: {path}")
-                    if skip_reports:
-                        with path.open("rb") as stream:
-                            prefix = stream.read(256)
-                        if prefix.startswith(
-                            (
-                                REPORT_MARKER.encode(),
-                                "# Reporte de análisis de logs\n\nInicio: ".encode(),
-                            )
-                        ):
-                            stats.skipped += 1
-                            return
-                    seen.add(identity)
-                    yield path.absolute()
+                    with open_log(path, expected=info) as source:
+                        if skip_reports:
+                            prefix = source.stream.read(256)
+                            source.stream.seek(0)
+                            if prefix.startswith(
+                                (
+                                    REPORT_MARKER.encode(),
+                                    "# Reporte de análisis de logs\n\nInicio: ".encode(),
+                                )
+                            ):
+                                stats.skipped += 1
+                                return
+                        seen.add(identity)
+                        yield source
             elif stat.S_ISDIR(info.st_mode):
                 stats.directories += 1
                 if not descend:
@@ -118,21 +126,54 @@ def discover_files(
         yield from walk(expanded, True, base)
 
 
-def read_lines(path: Path) -> Iterator[tuple[int, str, bool]]:
+def discover_files(
+    paths: Sequence[Path],
+    *,
+    recursive: bool,
+    on_issue: Callable[[Issue], None],
+    excluded: Sequence[Path] = (),
+    include_patterns: Sequence[str] = (),
+    exclude_patterns: Sequence[str] = (),
+    skip_reports: bool = True,
+    stats: DiscoveryStats | None = None,
+) -> Iterator[Path]:
+    """API de rutas orientativa; el analizador utiliza discover_sources."""
+    sources = discover_sources(
+        paths,
+        recursive=recursive,
+        on_issue=on_issue,
+        excluded=excluded,
+        include_patterns=include_patterns,
+        exclude_patterns=exclude_patterns,
+        skip_reports=skip_reports,
+        stats=stats,
+    )
+    try:
+        for source in sources:
+            source.stream.close()
+            yield source.path
+    finally:
+        sources.close()
+
+
+def read_lines(path: Path | LogSource) -> Iterator[tuple[int, str, bool]]:
     """Devuelve número, texto y uso de latin-1 por línea física.
 
     La decodificación por línea permite tolerar archivos con codificación mixta
     sin releerlos ni perder resultados ya contados. Los errores de E/S se
     propagan al analizador, que conserva los resultados parciales.
     """
-    with path.open("rb") as stream:
-        for number, raw in enumerate(stream, start=1):
-            fallback = False
-            try:
-                text = raw.decode("utf-8")
-            except UnicodeDecodeError:
-                text = raw.decode("latin-1")
-                fallback = True
-            if number == 1:
-                text = text.removeprefix("\ufeff")
-            yield number, text.rstrip("\r\n"), fallback
+    if isinstance(path, Path):
+        with open_log(path) as source:
+            yield from read_lines(source)
+        return
+    for number, raw in enumerate(path.stream, start=1):
+        fallback = False
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+            fallback = True
+        if number == 1:
+            text = text.removeprefix("\ufeff")
+        yield number, text.rstrip("\r\n"), fallback

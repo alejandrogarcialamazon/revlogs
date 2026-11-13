@@ -25,3 +25,10 @@ ausencia total, selección vacía, directorio vacío, permisos y avisos en Markd
 La validación comprende suite, Ruff, formato, mypy, clon limpio, empaquetado y
 CLI instalada. La prueba remota usa solo copias temporales y datos sintéticos,
 sin sudo ni cambios de servicios. Los resultados operativos quedan en reports/.
+
+Resultados comprobados el 13/11: 58 pruebas locales, 58 en Python 3.10.12 remoto
+y 58 desde clon limpio. Ruff, formato, mypy estricto, wheel/sdist, CLI instalada
+y pip check aprobados. El timer publicó el SHA autorizado a las 18:10:05;
+se confirmó en GitHub sin adelantar la mejora 6.
+La [ejecución de CI](https://github.com/alejandrogarcialamazon/revlogs/actions/runs/43508231415)
+de ese commit finalizó correctamente.

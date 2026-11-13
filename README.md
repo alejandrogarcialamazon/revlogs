@@ -91,6 +91,10 @@ confiables: las regex complejas pueden degradar mucho el tiempo de ejecución.
 
 ## Streaming y codificación
 
+La apertura segura requiere Linux con O_PATH y `/proc/self/fd`: valida tipo e
+identidad mediante descriptores y rechaza componentes simbólicos. Cabecera y
+contenido usan el mismo stream. Véase [mejora 6](docs/MEJORA-06-APERTURA-SEGURA.md).
+
 Cada archivo se lee una sola vez, línea por línea en binario. Se intenta UTF-8 y,
 si una línea no es válida, se decodifica como latin-1 y se registra el fallback.
 Esto permite archivos mixtos sin recontar líneas; no es detección automática de

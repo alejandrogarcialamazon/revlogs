@@ -9,7 +9,8 @@ from pathlib import Path
 from re import Pattern
 
 from .models import DiscoveryStats, Evidence, FileResult, Issue, ScanResult, Severity
-from .reader import discover_files, read_lines
+from .reader import discover_sources, read_lines
+from .safe_io import LogSource
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_ERROR_PATTERNS = (r"\b(?:ERROR|CRITICAL|FATAL)\b",)
@@ -51,10 +52,14 @@ class LogAnalyzer:
             raise ValueError("Los patrones no deben coincidir con texto vacío")
         return compiled
 
-    def analyze_file(self, path: Path, result: ScanResult) -> FileResult:
+    def analyze_file(
+        self, path: Path, result: ScanResult, *, source: LogSource | None = None
+    ) -> FileResult:
         file_result = FileResult(path)
         try:
-            for number, line, fallback in read_lines(path):
+            for number, line, fallback in read_lines(
+                source if source is not None else path
+            ):
                 file_result.lines_read += 1
                 file_result.fallback_lines += int(fallback)
                 for severity, rule in self.rules.items():
@@ -107,7 +112,7 @@ class LogAnalyzer:
             result.issues.append(issue)
             LOGGER.warning("%s: %s", issue.path, issue.message)
 
-        for path in discover_files(
+        sources = discover_sources(
             paths,
             recursive=recursive,
             on_issue=on_issue,
@@ -116,9 +121,15 @@ class LogAnalyzer:
             exclude_patterns=exclude_patterns,
             skip_reports=skip_reports,
             stats=stats,
-        ):
-            LOGGER.info("Analizando %s", path)
-            result.files.append(self.analyze_file(path, result))
+        )
+        try:
+            for source in sources:
+                LOGGER.info("Analizando %s", source.path)
+                result.files.append(
+                    self.analyze_file(source.path, result, source=source)
+                )
+        finally:
+            sources.close()
         if not result.files:
             if stats.skipped:
                 code, message = (
