@@ -1,21 +1,28 @@
 """Reglas de búsqueda configurables y acumulación acotada de evidencias."""
 
 import logging
-import re
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from re import Pattern
 
 from .limits import ResourceLimitError, ScanBudget, ScanLimits
-from .models import DiscoveryStats, Evidence, FileResult, Issue, ScanResult, Severity
+from .matching import (
+    DEFAULT_ERROR_PATTERNS as DEFAULT_ERROR_PATTERNS,
+)
+from .matching import (
+    DEFAULT_WARNING_PATTERNS as DEFAULT_WARNING_PATTERNS,
+)
+from .matching import (
+    Counter,
+    PatternMatcher,
+    SearchError,
+)
+from .models import DiscoveryStats, Evidence, FileResult, Issue, ScanResult
 from .reader import discover_sources, read_lines
 from .safe_io import LogSource
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_ERROR_PATTERNS = (r"\b(?:ERROR|CRITICAL|FATAL)\b",)
-DEFAULT_WARNING_PATTERNS = (r"\b(?:WARNING|WARN)\b",)
 
 
 class LogAnalyzer:
@@ -33,27 +40,24 @@ class LogAnalyzer:
         max_details: int = 50,
         max_excerpt_chars: int = 1000,
         limits: ScanLimits | None = None,
+        error_literals: Sequence[str] = (),
+        warning_literals: Sequence[str] = (),
+        regex_timeout: float = 0.5,
+        regex_memory_mib: int = 256,
     ) -> None:
         if max_details < 0 or max_excerpt_chars < 1:
             raise ValueError("Límites de evidencias inválidos")
-        self.rules = {
-            Severity.ERROR: self._compile(error_patterns),
-            Severity.WARNING: self._compile(warning_patterns),
-        }
+        self.matcher = PatternMatcher(
+            error_patterns,
+            warning_patterns,
+            error_literals=error_literals,
+            warning_literals=warning_literals,
+            timeout=regex_timeout,
+            memory_mib=regex_memory_mib,
+        )
         self.max_details = max_details
         self.max_excerpt_chars = max_excerpt_chars
         self.limits = limits or ScanLimits()
-
-    @staticmethod
-    def _compile(patterns: Sequence[str]) -> Pattern[str]:
-        if not patterns:
-            raise ValueError("Se requiere al menos un patrón por categoría")
-        compiled = re.compile(
-            "|".join(f"(?:{pattern})" for pattern in patterns), re.IGNORECASE
-        )
-        if compiled.search(""):
-            raise ValueError("Los patrones no deben coincidir con texto vacío")
-        return compiled
 
     def analyze_file(
         self,
@@ -62,7 +66,13 @@ class LogAnalyzer:
         *,
         source: LogSource | None = None,
         budget: ScanBudget | None = None,
+        counter: Counter | None = None,
     ) -> FileResult:
+        if counter is None:
+            with self.matcher.session() as active_counter:
+                return self.analyze_file(
+                    path, result, source=source, budget=budget, counter=active_counter
+                )
         file_result = FileResult(path)
         budget = budget if budget is not None else ScanBudget(self.limits)
         try:
@@ -71,12 +81,7 @@ class LogAnalyzer:
             ):
                 file_result.lines_read += 1
                 file_result.fallback_lines += int(fallback)
-                for severity, rule in self.rules.items():
-                    count = sum(
-                        1
-                        for match in rule.finditer(line)
-                        if match.end() > match.start()
-                    )
+                for severity, count in counter(line).items():
                     if not count:
                         continue
                     category = file_result.categories[severity]
@@ -96,8 +101,16 @@ class LogAnalyzer:
             limited = isinstance(exc, ResourceLimitError)
             if isinstance(exc, ResourceLimitError) and exc.stop_scan:
                 budget.stopped = True
+            if isinstance(exc, SearchError):
+                budget.stopped = True
             issue = Issue(
-                path, str(exc), code="resource_limit" if limited else "io_error"
+                path,
+                str(exc),
+                code=exc.code
+                if isinstance(exc, SearchError)
+                else "resource_limit"
+                if limited
+                else "io_error",
             )
             result.add_issue(issue, self.limits.max_issues)
             LOGGER.warning("Lectura incompleta de %s: %s", path, exc)
@@ -142,16 +155,23 @@ class LogAnalyzer:
             stats=stats,
             budget=budget,
         )
-        try:
-            for source in sources:
-                LOGGER.info("Analizando %s", source.path)
-                result.files.append(
-                    self.analyze_file(source.path, result, source=source, budget=budget)
-                )
-                if budget.stopped:
-                    break
-        finally:
-            sources.close()
+        with self.matcher.session() as active_counter:
+            try:
+                for source in sources:
+                    LOGGER.info("Analizando %s", source.path)
+                    result.files.append(
+                        self.analyze_file(
+                            source.path,
+                            result,
+                            source=source,
+                            budget=budget,
+                            counter=active_counter,
+                        )
+                    )
+                    if budget.stopped:
+                        break
+            finally:
+                sources.close()
         if not result.files:
             if stats.skipped:
                 code, message = (

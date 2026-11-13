@@ -51,6 +51,29 @@ def verify(directory: Path) -> None:
                 or "Advertencias: 1" not in result.stdout
             ):
                 raise RuntimeError("El wheel instalado no conserva conteos/umbrales")
+        regex_log = root / "regex.log"
+        regex_log.write_text("ERROR\n" + "a" * 10000 + "!\n", encoding="utf-8")
+        regex_report = root / "regex.md"
+        timed = subprocess.run(
+            [
+                str(cli),
+                str(regex_log),
+                "--error-pattern",
+                "(a+)+$",
+                "--regex-timeout",
+                "0.05",
+                "-o",
+                str(regex_report),
+            ],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=8,
+        )
+        if timed.returncode != 2 or "regex_timeout" not in regex_report.read_text(
+            encoding="utf-8"
+        ).replace("\\_", "_"):
+            raise RuntimeError("El wheel instalado no controla el timeout de regex")
         subprocess.run(
             [str(python), "-m", "pip", "check"], cwd=root, check=True, timeout=30
         )

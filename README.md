@@ -64,6 +64,12 @@ python3 -m venv .venv
 
 ## Reglas y conteos
 
+Para texto fijo, usar `--error-literal 'a+b'` o `--warning-literal '[deprecated]'`.
+Las regex personalizadas se aíslan en un proceso Linux con timeout por línea
+(`--regex-timeout`, 0.5 s) y memoria limitada (`--regex-memory-mib`, 256).
+Un timeout detiene el scan con resultados parciales y código 2. Véase
+[mejora 8](docs/MEJORA-08-BUSQUEDAS.md).
+
 - Errores: palabras completas `ERROR`, `CRITICAL`, `FATAL`.
 - Advertencias: palabras completas `WARNING`, `WARN`.
 - Búsqueda sin distinción entre mayúsculas y minúsculas.
@@ -111,9 +117,9 @@ categoría, con extractos de hasta 1000 caracteres. `--max-details 0` conserva
 solo métricas. El reporte indica cuántas líneas con coincidencias quedaron sin
 detalle. Los conteos siempre incluyen todas las líneas leídas.
 
-El consumo de memoria depende de la línea más larga y de las muestras/estadísticas
-por archivo, no del tamaño completo de los logs. Una línea individual enorme sí
-debe entrar en memoria. El análisis es secuencial. Los archivos activos pueden
+El consumo de memoria queda acotado por los límites de línea, archivos, muestras
+e incidencias; una línea mayor al límite se rechaza sin cargarla completa.
+El análisis es secuencial. Los archivos activos pueden
 cambiar durante la lectura: el reporte representa lo leído, no una instantánea;
 para auditorías reproducibles, usar copias estables de los logs.
 

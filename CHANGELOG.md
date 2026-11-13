@@ -1,5 +1,10 @@
 # Cambios
 
+## Mejoras 7 y 8 — 2026-11-13
+
+- Presupuestos de lectura, recorrido, muestras e incidencias y estado parcial explícito.
+- Búsqueda literal y regex personalizadas en proceso separado con timeout y memoria acotada.
+
 ## Mejoras 5 y 6 — 2026-11-13
 
 - Estados operativos: rutas predeterminadas opcionales, selección vacía y modo estricto.

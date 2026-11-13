@@ -100,6 +100,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Devuelve 1 si hay errores, o errores/advertencias respectivamente",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--error-literal", action="append", default=[], metavar="TEXT")
+    parser.add_argument(
+        "--warning-literal", action="append", default=[], metavar="TEXT"
+    )
+    parser.add_argument(
+        "--regex-timeout",
+        type=float,
+        default=0.5,
+        help="Timeout por línea en segundos (0,60]",
+    )
+    parser.add_argument("--regex-memory-mib", type=_positive, default=256)
     defaults = ScanLimits()
     for name in (
         "max_line_bytes",
@@ -145,6 +156,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             warning_patterns=(*DEFAULT_WARNING_PATTERNS, *args.warning_pattern),
             max_details=args.max_details,
             max_excerpt_chars=args.max_excerpt_chars,
+            error_literals=args.error_literal,
+            warning_literals=args.warning_literal,
+            regex_timeout=args.regex_timeout,
+            regex_memory_mib=args.regex_memory_mib,
             limits=ScanLimits(
                 **{
                     name: getattr(args, name)
